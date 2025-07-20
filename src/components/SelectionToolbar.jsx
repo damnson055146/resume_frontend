@@ -17,7 +17,8 @@ export default function SelectionToolbar({
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        minWidth: '240px'
+        minWidth: '240px',
+        maxWidth: '300px'
       }}
     >
       {/* 优化按钮 */}

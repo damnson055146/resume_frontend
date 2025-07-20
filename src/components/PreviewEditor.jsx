@@ -31,22 +31,62 @@ export default function PreviewEditor({ content, onUpdate, onTextSelection, sele
     const end = textarea.selectionEnd;
     const selectedText = text.substring(start, end);
 
+    console.log('Text selection:', { start, end, selectedText, hasSelection: selectedText.trim() && start !== end });
+
     if (selectedText.trim() && start !== end) {
       setSelection({ start, end, text: selectedText });
       
-      // 计算工具栏位置
+      // 计算工具栏位置 - 基于 textarea 的选择位置
       const rect = textarea.getBoundingClientRect();
+      
+      // 获取 textarea 的样式信息
+      const computedStyle = window.getComputedStyle(textarea);
+      const lineHeight = parseInt(computedStyle.lineHeight) || 20;
+      const fontSize = parseInt(computedStyle.fontSize) || 14;
+      const paddingTop = parseInt(computedStyle.paddingTop) || 16;
+      const paddingLeft = parseInt(computedStyle.paddingLeft) || 16;
+      
+      // 计算选中文本的行和列位置
       const textBeforeSelection = text.substring(0, start);
       const lines = textBeforeSelection.split('\n');
       const currentLine = lines.length - 1;
       const currentColumn = lines[lines.length - 1].length;
       
-      // 估算选择文本的位置
-      const lineHeight = 20;
-      const charWidth = 7;
+      // 估算字符宽度（等宽字体）
+      const charWidth = fontSize * 0.6; // 大约 0.6 倍字体大小
       
-      const x = rect.left + Math.min(currentColumn * charWidth, rect.width - 200);
-      const y = rect.top + currentLine * lineHeight - 50;
+      // 计算选中文本的位置
+      const selectionX = rect.left + paddingLeft + (currentColumn * charWidth);
+      const selectionY = rect.top + paddingTop + (currentLine * lineHeight);
+      
+      // 计算工具栏位置
+      const toolbarWidth = 240;
+      const toolbarHeight = 40;
+      
+      let x = selectionX - (toolbarWidth / 2); // 居中显示
+      let y = selectionY - toolbarHeight - 10; // 在选中文本上方
+      
+      // 确保工具栏在 textarea 范围内
+      if (x < rect.left + 10) {
+        x = rect.left + 10;
+      } else if (x + toolbarWidth > rect.right - 10) {
+        x = rect.right - toolbarWidth - 10;
+      }
+      
+      // 垂直位置调整
+      if (y < rect.top + 10) {
+        // 如果上方空间不够，显示在下方
+        y = selectionY + lineHeight + 10;
+      } else if (y + toolbarHeight > rect.bottom - 10) {
+        // 如果下方空间也不够，显示在中间
+        y = rect.top + (rect.height / 2) - (toolbarHeight / 2);
+      }
+      
+      console.log('Toolbar position:', { 
+        x, y, 
+        selection: { x: selectionX, y: selectionY, line: currentLine, column: currentColumn },
+        textareaRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      });
       
       setToolbarPosition({ x, y });
       setShowToolbar(true);
@@ -61,12 +101,22 @@ export default function PreviewEditor({ content, onUpdate, onTextSelection, sele
 
   // 鼠标抬起事件
   const handleMouseUp = () => {
-    setTimeout(handleTextSelection, 10);
+    // 增加延迟确保选择完成
+    setTimeout(handleTextSelection, 50);
   };
 
   // 处理键盘事件
   const handleKeyUp = (e) => {
-    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt') {
+    // 监听更多键盘组合
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+      setTimeout(handleTextSelection, 10);
+    }
+  };
+
+  // 处理键盘按下事件
+  const handleKeyDown = (e) => {
+    // Ctrl+A 全选
+    if (e.ctrlKey && e.key === 'a') {
       setTimeout(handleTextSelection, 10);
     }
   };
@@ -76,6 +126,21 @@ export default function PreviewEditor({ content, onUpdate, onTextSelection, sele
     setShowToolbar(false);
     setSelection({ start: 0, end: 0, text: '' });
   };
+
+  // 添加全局点击事件监听
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      // 如果点击的不是 textarea 或其子元素，则隐藏工具栏
+      if (textareaRef.current && !textareaRef.current.contains(e.target)) {
+        hideToolbar();
+      }
+    };
+
+    if (showToolbar) {
+      document.addEventListener('click', handleGlobalClick);
+      return () => document.removeEventListener('click', handleGlobalClick);
+    }
+  }, [showToolbar]);
 
   // AI优化
   const handleOptimize = async () => {
@@ -157,7 +222,8 @@ export default function PreviewEditor({ content, onUpdate, onTextSelection, sele
         onChange={(e) => handleTextChange(e.target.value)}
         onMouseUp={handleMouseUp}
         onKeyUp={handleKeyUp}
-        onClick={hideToolbar}
+        onSelect={handleTextSelection}
+        onKeyDown={handleKeyDown}
         className="flex-1 p-4 border-none resize-none outline-none text-sm leading-relaxed font-mono bg-gray-50 overflow-y-auto"
         placeholder="在这里编辑 Markdown...&#10;&#10;示例：&#10;# 姓名&#10;## 联系方式&#10;- 电话：123-456-7890&#10;- 邮箱：example@email.com&#10;&#10;## 教育背景&#10;**学校名称** | 专业 | 时间&#10;&#10;## 实习经历&#10;&#10;提示：选中文本可以进行AI优化或扩写"
         disabled={isLoading || isProcessing}
